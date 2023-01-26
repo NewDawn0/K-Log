@@ -1,2 +1,2 @@
-# K-Log
-A Keylogger daemon for macOs using C++
+# logged
+A Keylogger daemon for macOS using C++
