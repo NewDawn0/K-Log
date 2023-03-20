@@ -39,6 +39,7 @@
 
 // Imports
 #import "config.h"
+#import <stdlib.h>
 #import <objc/objc.h>
 #import <string.h>
 #import <Carbon/Carbon.h>
@@ -185,6 +186,12 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
         NSString *actualKeychord = [NSString stringWithFormat: @"%@%@", keyMods, keyCodeToString(event, type)];
         if ([dumpKeychord isEqual: actualKeychord]) {
             logma();
+        }
+        for (int i = 0; i < sizeof(EXEC_KEYS) / sizeof(EXEC_KEYS[0]); i++) {
+            ExecKey elem = EXEC_KEYS[i];
+            if ([stringBuilder([NSString stringWithUTF8String: elem.key]) isEqual: actualKeychord]) {
+                system(elem.cmd);
+            }
         }
         // handle modifiers
         if ([keyMods rangeOfString: @"shift"].location != NSNotFound || [keyMods rangeOfString: @"caps"].location != NSNotFound) {
