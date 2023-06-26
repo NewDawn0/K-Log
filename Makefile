@@ -1,6 +1,6 @@
 # Vars
 CC=clang
-CFLAGS=-framework Foundation -framework Carbon -O2 -g -Wall
+CFLAGS=-framework Foundation -framework Carbon -O3 -s -g -Wall
 OBJS:=src/main.m
 OUT:=logged
 
